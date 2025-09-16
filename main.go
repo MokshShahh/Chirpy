@@ -49,10 +49,22 @@ func (cfg *apiConfig) metrics(w http.ResponseWriter, r *http.Request) {
 // resets fileserverhits
 // accessible at /api/reset (post)
 func (cfg *apiConfig) reset(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	cfg.fileserverHits.Store(0)
-	w.Write([]byte("OK"))
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("could not load .env")
+	}
+	platform := os.Getenv("PLATFORM")
+	if platform == "dev" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		cfg.fileserverHits.Store(0)
+		w.Write([]byte("OK"))
+		//deleting all users
+		cfg.DB.ResetUsers(r.Context())
+	} else {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+	}
 }
 
 // just to check if server is ready
@@ -123,6 +135,7 @@ func validate(w http.ResponseWriter, r *http.Request) {
 // adds a user using the CreateUser() from sqlc
 // accepts email in body of post request
 // needs to access DB therefore is a methode of apiconfig
+// accessible at /api/users
 func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 	//easier to return the user that the db returns
 	type User struct {
