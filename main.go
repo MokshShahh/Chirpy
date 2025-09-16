@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -74,13 +73,13 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(http.StatusText(http.StatusOK)))
 }
 
-// validates all chirps
+// add chirp to db
 // has to be less than 140 chars long
-// cannot contain certain words and chirp is cleaned if it does
-// accessible at /api/validate_chirps (post)
-func validate(w http.ResponseWriter, r *http.Request) {
+// accessible at /api/chirps (post)
+func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 	type param struct {
-		Body string
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	params := param{}
@@ -88,48 +87,57 @@ func validate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(500)
-		response := map[string]string{"error": "Something went wrong"}
-		data, err := json.Marshal(response)
-		if err != nil {
-			log.Printf("something wrong with json encoding of the error message")
-			return
-		}
+		response := map[string]string{"error": "Something went wrong with JSON decoding"}
+		data, _ := json.Marshal(response)
 		w.Write(data)
+		log.Printf("JSON decoding error: %v", err)
 		return
 	}
 	text := params.Body
-	notAllowed := []string{"kerfuffle", "sharbert", "fornax"}
 	if len(text) > 140 {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(500)
-		response := map[string]string{"error": "chirp too long"}
-		data, err := json.Marshal(response)
-		if err != nil {
-			log.Printf("something wrong with json encoding of the error message")
-			return
-		}
+		w.WriteHeader(400)
+		response := map[string]string{"error": "Chirp too long"}
+		data, _ := json.Marshal(response)
 		w.Write(data)
 		return
-
-	} else {
-		arr := strings.Split(text, " ")
-		for i, v := range arr {
-			for _, n := range notAllowed {
-				if strings.ToLower(v) == n {
-					arr[i] = "****"
-				}
-			}
-		}
-		censored := strings.Join(arr, " ")
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		response := map[string]string{"cleaned_body": censored}
-		data, err := json.Marshal(response)
-		if err != nil {
-			return
-		}
-		w.Write(data)
 	}
+
+	dbParams := database.CreateChirpParams{
+		Body:   params.Body,
+		UserID: params.UserID,
+	}
+	data, err := cfg.DB.CreateChirp(r.Context(), dbParams)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Could not add to db"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		log.Printf("Database error: %v", err)
+		return
+	}
+
+	type Chirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	chirpp := Chirp{
+		ID:        data.ID,
+		CreatedAt: data.CreatedAt,
+		UpdatedAt: data.UpdatedAt,
+		Body:      data.Body,
+		UserID:    data.UserID,
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	res, _ := json.Marshal(chirpp)
+	w.Write(res)
 }
 
 // adds a user using the CreateUser() from sqlc
@@ -222,7 +230,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metrics)
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
-	mux.HandleFunc("POST /api/validate_chirp", validate)
+	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
 
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
