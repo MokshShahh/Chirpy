@@ -1,17 +1,24 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/MokshShahh/Chirpy/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 // to store the no of times /app is hit
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	DB             *database.Queries
 }
 
 // adding middleware to /app
@@ -112,8 +119,25 @@ func validate(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	//psql config
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("could not load .env")
+	}
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL is not set")
+	}
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal("Can't connect to database:", err)
+	}
+	dbQueries := database.New(db)
 	const port = "8080"
-	apiCfg := &apiConfig{}
+	apiCfg := &apiConfig{
+		fileserverHits: atomic.Int32{},
+		DB:             dbQueries,
+	}
 
 	//handler (maps routes to fucntions)
 	mux := http.NewServeMux()
