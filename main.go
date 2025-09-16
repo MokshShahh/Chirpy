@@ -9,8 +9,10 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/MokshShahh/Chirpy/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -77,7 +79,7 @@ func validate(w http.ResponseWriter, r *http.Request) {
 		response := map[string]string{"error": "Something went wrong"}
 		data, err := json.Marshal(response)
 		if err != nil {
-			log.Printf("something wrong with json encoding")
+			log.Printf("something wrong with json encoding of the error message")
 			return
 		}
 		w.Write(data)
@@ -91,7 +93,7 @@ func validate(w http.ResponseWriter, r *http.Request) {
 		response := map[string]string{"error": "chirp too long"}
 		data, err := json.Marshal(response)
 		if err != nil {
-			log.Printf("something wrong with json encoding")
+			log.Printf("something wrong with json encoding of the error message")
 			return
 		}
 		w.Write(data)
@@ -116,6 +118,66 @@ func validate(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Write(data)
 	}
+}
+
+// adds a user using the CreateUser() from sqlc
+// accepts email in body of post request
+// needs to access DB therefore is a methode of apiconfig
+func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
+	//easier to return the user that the db returns
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+	//to decode the payload
+	type param struct {
+		Email string
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := param{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding of the error message")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	email := params.Email
+	usr, err := cfg.DB.CreateUser(r.Context(), email)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	user := User{
+		ID:        usr.ID,
+		CreatedAt: usr.CreatedAt,
+		UpdatedAt: usr.UpdatedAt,
+		Email:     usr.Email,
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusCreated)
+	data, err := json.Marshal(user)
+	if err != nil {
+		return
+	}
+	w.Write(data)
 }
 
 func main() {
@@ -148,6 +210,8 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metrics)
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
 	mux.HandleFunc("POST /api/validate_chirp", validate)
+	mux.HandleFunc("POST /api/users", apiCfg.addUser)
+
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 
 	//server config
