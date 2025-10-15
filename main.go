@@ -140,6 +140,44 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+// returns all chirps ordered in ascending order of creation time
+// GET @ /api/chirps
+func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
+	type Chirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+	data, err := cfg.DB.GetAllChirps(r.Context())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Printf("Database error fetching chirps: %v", err)
+		return
+	}
+	chirps := []Chirp{}
+	for _, dbChirp := range data {
+		chirps = append(chirps, Chirp{
+			ID:        dbChirp.ID,
+			CreatedAt: dbChirp.CreatedAt,
+			UpdatedAt: dbChirp.UpdatedAt,
+			Body:      dbChirp.Body,
+			UserID:    dbChirp.UserID,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	res, err := json.Marshal(chirps)
+	if err != nil {
+		log.Printf("JSON marshaling error: %v", err)
+		return
+	}
+	w.Write(res)
+
+}
+
 // adds a user using the CreateUser() from sqlc
 // accepts email in body of post request
 // needs to access DB therefore is a methode of apiconfig
@@ -229,6 +267,7 @@ func main() {
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metrics)
+	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
