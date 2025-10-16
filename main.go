@@ -178,6 +178,64 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
+	type Chirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	idString := r.PathValue("id")
+	id, err := uuid.Parse(idString)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		response := map[string]string{"error": "Invalid Chirp ID"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+
+	data, err := cfg.DB.GetOneChirp(r.Context(), id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			response := map[string]string{"error": "Chirp not found"}
+			data, _ := json.Marshal(response)
+			w.Write(data)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		response := map[string]string{"error": "Could not fetch chirp"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		log.Printf("Database error fetching chirp: %v", err)
+		return
+	}
+
+	chirp := Chirp{
+		ID:        data.ID,
+		CreatedAt: data.CreatedAt,
+		UpdatedAt: data.UpdatedAt,
+		Body:      data.Body,
+		UserID:    data.UserID,
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	res, err := json.Marshal(chirp)
+	if err != nil {
+		log.Printf("JSON marshaling error: %v", err)
+		return
+	}
+	w.Write(res)
+}
+
 // adds a user using the CreateUser() from sqlc
 // accepts email in body of post request
 // needs to access DB therefore is a methode of apiconfig
@@ -268,6 +326,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metrics)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
+	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirp)
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
