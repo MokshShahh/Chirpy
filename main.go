@@ -321,7 +321,7 @@ func main() {
 	//handler (maps routes to fucntions)
 	mux := http.NewServeMux()
 
-	//all the routes
+	//all the routes available in this app
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metrics)
