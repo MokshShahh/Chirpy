@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MokshShahh/Chirpy/internal/auth"
+
 	"github.com/MokshShahh/Chirpy/internal/database"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -250,7 +252,8 @@ func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 	}
 	//to decode the payload
 	type param struct {
-		Email string
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -268,8 +271,25 @@ func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 		return
 	}
-	email := params.Email
-	usr, err := cfg.DB.CreateUser(r.Context(), email)
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong with password hashing"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+
+	}
+	dbParams := database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+	}
+	usr, err := cfg.DB.CreateUser(r.Context(), dbParams)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(500)
