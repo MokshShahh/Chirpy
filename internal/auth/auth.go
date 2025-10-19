@@ -1,6 +1,11 @@
 package auth
 
-import "github.com/alexedwards/argon2id"
+import (
+	"time"
+
+	"github.com/alexedwards/argon2id"
+	"github.com/google/uuid"
+)
 
 func HashPassword(password string) (string, error) {
 	hash, err := argon2id.CreateHash(password, argon2id.DefaultParams)
@@ -17,4 +22,8 @@ func CheckPasswordHash(password, hash string) (bool, error) {
 	}
 
 	return match, nil
+}
+
+func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
+
 }
