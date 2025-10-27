@@ -18,10 +18,11 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// to store the no of times /app is hit
+// to store info that needs to be used once server starts
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
+	SECRET         string
 }
 
 // adding middleware to /app
@@ -317,6 +318,102 @@ func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
+	type param struct {
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds *int   `json:"expires_in_seconds"` //keeping it a pointer so that that field is optional
+	}
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+		Token     string    `json:"token"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := param{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding of the error message")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	dbUser, err := cfg.DB.GetPassword(r.Context(), params.Email)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			response := map[string]string{"error": "Invalid credentials"}
+			data, _ := json.Marshal(response)
+			w.Write(data)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		res := map[string]string{"error": "something went wrong with retrieveing user"}
+		data, _ := json.Marshal(res)
+		w.Write(data)
+		return
+	}
+	match, err := auth.CheckPasswordHash(params.Password, dbUser.HashedPassword)
+	if err != nil || !match {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		res := map[string]string{"error": "passwords do not match"}
+		data, _ := json.Marshal(res)
+		w.Write(data)
+		return
+
+	}
+	//converting into time format
+	expiresIn := time.Hour
+	if params.ExpiresInSeconds != nil {
+		//dereferencing pointer
+		seconds := *params.ExpiresInSeconds
+		if seconds < 3600 && seconds > 0 {
+			expiresIn = time.Second * time.Duration(seconds)
+		}
+	}
+
+	jwt, err := auth.MakeJWT(dbUser.ID, cfg.SECRET, expiresIn)
+	if err != nil {
+		log.Printf("generation %v", err)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong with generation of jwt"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding of the error message")
+			return
+		}
+		w.Write(data)
+		return
+
+	}
+	response := User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     params.Email,
+		Token:     jwt,
+	}
+	fmt.Print(expiresIn)
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	w.WriteHeader(200)
+	data, _ := json.Marshal(response)
+	w.Write(data)
+
+}
+
 func main() {
 	//psql config
 	err := godotenv.Load()
@@ -324,6 +421,8 @@ func main() {
 		log.Fatal("could not load .env")
 	}
 	dbURL := os.Getenv("DB_URL")
+	SECRET := os.Getenv("SECRET")
+	fmt.Print(SECRET)
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
 	}
@@ -336,6 +435,7 @@ func main() {
 	apiCfg := &apiConfig{
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
+		SECRET:         SECRET,
 	}
 
 	//handler (maps routes to fucntions)
@@ -350,6 +450,7 @@ func main() {
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
+	mux.HandleFunc("POST /api/login", apiCfg.login)
 
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 

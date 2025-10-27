@@ -7,6 +7,9 @@ package database
 
 import (
 	"context"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -35,6 +38,29 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
+	)
+	return i, err
+}
+
+const getPassword = `-- name: GetPassword :one
+SELECT id,hashed_password,created_at,updated_at from users where email=$1
+`
+
+type GetPasswordRow struct {
+	ID             uuid.UUID
+	HashedPassword string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+func (q *Queries) GetPassword(ctx context.Context, email string) (GetPasswordRow, error) {
+	row := q.db.QueryRowContext(ctx, getPassword, email)
+	var i GetPasswordRow
+	err := row.Scan(
+		&i.ID,
+		&i.HashedPassword,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

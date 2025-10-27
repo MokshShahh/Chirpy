@@ -11,3 +11,6 @@ RETURNING *;
 
 -- name: ResetUsers :exec
 DELETE FROM users;
+
+-- name: GetPassword :one
+SELECT id,hashed_password,created_at,updated_at from users where email=$1;

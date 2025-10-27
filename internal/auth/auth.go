@@ -39,7 +39,12 @@ func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (str
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, err := token.SignedString(tokenSecret)
+	signedKey := []byte(tokenSecret)
+
+	if len(signedKey) == 0 {
+		return "", errors.New("JWT signing key cannot be empty")
+	}
+	ss, err := token.SignedString(signedKey)
 	if err != nil {
 		return "", err
 	}
