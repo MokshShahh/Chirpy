@@ -84,9 +84,29 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 		Body   string    `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
 	}
+
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "Missing or malformed token"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+	UserId, err := auth.ValidateJWT(tokenString, cfg.SECRET)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "Invalid or expired JWT"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+	fmt.Print(UserId)
 	decoder := json.NewDecoder(r.Body)
 	params := param{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(500)
