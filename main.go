@@ -94,7 +94,7 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 		return
 	}
-	UserId, err := auth.ValidateJWT(tokenString, cfg.SECRET)
+	_, err = auth.ValidateJWT(tokenString, cfg.SECRET)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(401)
@@ -103,7 +103,6 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 		return
 	}
-	fmt.Print(UserId)
 	decoder := json.NewDecoder(r.Body)
 	params := param{}
 	err = decoder.Decode(&params)
@@ -414,19 +413,41 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 
 	}
 	refreshToken, _ := auth.MakeRefreshToken()
+	dbParams := database.CreateTokenParams{
+		Token:  refreshToken,
+		UserID: dbUser.ID,
+	}
+	usr, err := cfg.DB.CreateToken(r.Context(), dbParams)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong wth refresh token"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+
 	response := User{
 		ID:           dbUser.ID,
 		CreatedAt:    dbUser.CreatedAt,
 		UpdatedAt:    dbUser.UpdatedAt,
 		Email:        params.Email,
 		Token:        jwt,
-		RefreshToken: refreshToken,
+		RefreshToken: usr.Token,
 	}
-	fmt.Print(expiresIn)
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	w.WriteHeader(200)
 	data, _ := json.Marshal(response)
 	w.Write(data)
+
+}
+
+// #TODO endpoint shld reqire refresh token and shld look it up in dba nd return 401 if expired or does not exist
+func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 
 }
 
@@ -438,7 +459,6 @@ func main() {
 	}
 	dbURL := os.Getenv("DB_URL")
 	SECRET := os.Getenv("SECRET")
-	fmt.Print(SECRET)
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
 	}
@@ -467,6 +487,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
 	mux.HandleFunc("POST /api/login", apiCfg.login)
+	mux.HandleFunc("POST /api/refresh", apiCfg.refresh)
 
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 
