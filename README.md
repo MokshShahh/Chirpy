@@ -2,7 +2,7 @@
 
 This project is a backend service developed in **Go** that replicates core functionalities of a platform like Twitter. It features a robust server, complete with persistent data storage using a **PostgreSQL** database and comprehensive **user authentication**.
 
-## 🌐 Routes Overview
+## Routes Overview
 
 | Method | Endpoint | Description | Authentication |
 | :--- | :--- | :--- | :--- |
