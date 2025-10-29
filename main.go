@@ -340,16 +340,16 @@ func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 	type param struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds *int   `json:"expires_in_seconds"` //keeping it a pointer so that that field is optional
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -394,15 +394,9 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
+
 	//converting into time format
 	expiresIn := time.Hour
-	if params.ExpiresInSeconds != nil {
-		//dereferencing pointer
-		seconds := *params.ExpiresInSeconds
-		if seconds < 3600 && seconds > 0 {
-			expiresIn = time.Second * time.Duration(seconds)
-		}
-	}
 
 	jwt, err := auth.MakeJWT(dbUser.ID, cfg.SECRET, expiresIn)
 	if err != nil {
@@ -419,12 +413,14 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
+	refreshToken, _ := auth.MakeRefreshToken()
 	response := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     params.Email,
-		Token:     jwt,
+		ID:           dbUser.ID,
+		CreatedAt:    dbUser.CreatedAt,
+		UpdatedAt:    dbUser.UpdatedAt,
+		Email:        params.Email,
+		Token:        jwt,
+		RefreshToken: refreshToken,
 	}
 	fmt.Print(expiresIn)
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
