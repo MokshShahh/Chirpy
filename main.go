@@ -464,6 +464,7 @@ func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
+
 	dbToken, err := cfg.DB.FindToken(r.Context(), tokenString)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -484,6 +485,16 @@ func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//check if token is valid
+	if dbToken.RevokedAt.Valid { // assuming RevokedAt is sql.NullTime
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		response := map[string]string{"error": "Refresh token has been revoked"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+
 	// Check if the refresh token is expired
 	if dbToken.ExpiresAt.Before(time.Now().UTC()) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -498,7 +509,7 @@ func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("JWT generation error: %v", err)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(401)
 		response := map[string]string{"error": "Something went wrong with JWT generation"}
 		data, _ := json.Marshal(response)
 		w.Write(data)
@@ -531,7 +542,7 @@ func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 	err = cfg.DB.RevokeToken(r.Context(), token)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(401)
 		response := map[string]string{"error": "Could not revoke token"}
 		data, _ := json.Marshal(response)
 		w.Write(data)
