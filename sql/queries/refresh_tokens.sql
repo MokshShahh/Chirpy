@@ -9,3 +9,6 @@ VALUES (
     NULL
 )
 RETURNING *;
+
+-- name: FindToken :one
+SELECT * from refresh_tokens WHERE token=$1; 

@@ -42,3 +42,21 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) (Refre
 	)
 	return i, err
 }
+
+const findToken = `-- name: FindToken :one
+SELECT token, created_at, updated_at, user_id, revoked_at, expires_at from refresh_tokens WHERE token=$1
+`
+
+func (q *Queries) FindToken(ctx context.Context, token string) (RefreshToken, error) {
+	row := q.db.QueryRowContext(ctx, findToken, token)
+	var i RefreshToken
+	err := row.Scan(
+		&i.Token,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.UserID,
+		&i.RevokedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}

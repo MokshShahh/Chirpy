@@ -446,9 +446,72 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 
 }
 
-// #TODO endpoint shld reqire refresh token and shld look it up in dba nd return 401 if expired or does not exist
 func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
+	type Response struct {
+		Token string `json:"token"`
+	}
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "Could not extract token"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
 
+	}
+	dbToken, err := cfg.DB.FindToken(r.Context(), tokenString)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(401)
+			response := map[string]string{"error": "Invalid or non-existent refresh token"}
+			data, _ := json.Marshal(response)
+			w.Write(data)
+			return
+
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		response := map[string]string{"error": "Database error while looking up token"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		log.Printf("Database error: %v", err)
+		return
+	}
+
+	// Check if the refresh token is expired
+	if dbToken.ExpiresAt.Before(time.Now().UTC()) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusUnauthorized)
+		response := map[string]string{"error": "Refresh token is expired"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+	expiresIn := time.Hour
+	newJWT, err := auth.MakeJWT(dbToken.UserID, cfg.SECRET, expiresIn)
+	if err != nil {
+		log.Printf("JWT generation error: %v", err)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		response := map[string]string{"error": "Something went wrong with JWT generation"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	w.WriteHeader(201)
+	response := Response{
+		Token: newJWT,
+	}
+	data, _ := json.Marshal(response)
+	w.Write(data)
 }
 
 func main() {
