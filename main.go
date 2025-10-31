@@ -506,12 +506,40 @@ func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
-	w.WriteHeader(201)
+	w.WriteHeader(200)
 	response := Response{
 		Token: newJWT,
 	}
 	data, _ := json.Marshal(response)
 	w.Write(data)
+}
+
+func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Could not get token from header"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	err = cfg.DB.RevokeToken(r.Context(), token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		response := map[string]string{"error": "Could not revoke token"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		log.Printf("Database error revoking token: %v", err)
+		return
+	}
+
+	w.WriteHeader(204)
 }
 
 func main() {
@@ -551,6 +579,7 @@ func main() {
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
 	mux.HandleFunc("POST /api/login", apiCfg.login)
 	mux.HandleFunc("POST /api/refresh", apiCfg.refresh)
+	mux.HandleFunc("POST /api/revoke", apiCfg.revoke)
 
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 
