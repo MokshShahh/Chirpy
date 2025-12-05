@@ -258,6 +258,82 @@ func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+// checks if the authenticated user is tryna delete HIS OWN CHIRP
+// only then deletes
+// #TODO: add better error handling
+func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
+	idString := r.PathValue("id")
+	id, err := uuid.Parse(idString)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusBadRequest)
+		response := map[string]string{"error": "Invalid Chirp ID"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		return
+	}
+	data, err := cfg.DB.GetOneChirp(r.Context(), id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusNotFound)
+			response := map[string]string{"error": "Chirp not found"}
+			data, _ := json.Marshal(response)
+			w.Write(data)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		response := map[string]string{"error": "Could not fetch chirp"}
+		data, _ := json.Marshal(response)
+		w.Write(data)
+		log.Printf("Database error fetching chirp: %v", err)
+		return
+	}
+	chirpUserID := data.UserID
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "Could not extract token"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+
+	}
+	tokenUser, err := cfg.DB.FindToken(r.Context(), tokenString)
+	if chirpUserID == tokenUser.UserID {
+		cfg.DB.DeleteChirp(r.Context(), id)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(204)
+		response := map[string]string{"success": "deleted successfully"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	} else {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(403)
+		response := map[string]string{"error": "tryna delete a chirp that isnt yours"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+
+	}
+}
+
 // adds a user using the CreateUser() from sqlc
 // accepts email in body of post request
 // needs to access DB therefore is a methode of apiconfig
@@ -678,6 +754,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metrics)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirps)
 	mux.HandleFunc("GET /api/chirps/{id}", apiCfg.getChirp)
+	mux.HandleFunc("DELETE /api/chirps/{id}", apiCfg.deleteChirp)
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
