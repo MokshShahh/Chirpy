@@ -14,3 +14,11 @@ DELETE FROM users;
 
 -- name: GetPassword :one
 SELECT id,hashed_password,created_at,updated_at from users where email=$1;
+
+-- name: UpdateUser :one
+UPDATE users
+SET updated_at = NOW(),
+    email = $1,
+    hashed_password = $2
+WHERE id = $3
+RETURNING *;

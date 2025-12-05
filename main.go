@@ -553,6 +553,99 @@ func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+func (cfg *apiConfig) editUser(w http.ResponseWriter, r *http.Request) {
+	type User struct {
+		Email string `json:"email"`
+	}
+	type param struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "Could not get token from header"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	user, err := cfg.DB.FindToken(r.Context(), token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "could not find user with token"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+
+	}
+	id := user.UserID
+
+	decoder := json.NewDecoder(r.Body)
+	params := param{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding of the error message")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong with password hashing"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+
+	}
+	dbParams := database.UpdateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+		ID:             id,
+	}
+	newUser, err := cfg.DB.UpdateUser(r.Context(), dbParams)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "Something went wrong"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	response := User{
+		Email: newUser.Email,
+	}
+	w.Header().Set("Content-Type", "application/json;charset=utf-8")
+	data, _ := json.Marshal(response)
+	w.Write(data)
+	w.WriteHeader(204)
+}
+
 func main() {
 	//psql config
 	err := godotenv.Load()
@@ -588,6 +681,7 @@ func main() {
 	mux.HandleFunc("POST /api/reset", apiCfg.reset)
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.addUser)
+	mux.HandleFunc("PUT /api/users", apiCfg.editUser)
 	mux.HandleFunc("POST /api/login", apiCfg.login)
 	mux.HandleFunc("POST /api/refresh", apiCfg.refresh)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revoke)
