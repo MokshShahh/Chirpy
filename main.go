@@ -722,6 +722,63 @@ func (cfg *apiConfig) editUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+// polka webhook to upgrade user to chirpy red
+func (cfg *apiConfig) payment(w http.ResponseWriter, r *http.Request) {
+	type DataPayload struct {
+		UserID string `json:"user_id"`
+	}
+
+	//represents the full request body
+	type WebhookRequest struct {
+		Event string      `json:"event"`
+		Data  DataPayload `json:"data"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	params := WebhookRequest{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(500)
+		response := map[string]string{"error": "unable to decode params"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	if params.Event != "user.upgraded" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(204)
+		response := map[string]string{"error": "event does not concern this endpoint"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	uuidObj, err := uuid.Parse(params.Data.UserID)
+	_, err = cfg.DB.UpgradeToChirpyRed(r.Context(), uuidObj)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(404)
+		response := map[string]string{"error": "user not found"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(204)
+	return
+}
+
 func main() {
 	//psql config
 	err := godotenv.Load()
@@ -762,6 +819,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", apiCfg.login)
 	mux.HandleFunc("POST /api/refresh", apiCfg.refresh)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revoke)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.payment)
 
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 
