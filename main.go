@@ -23,6 +23,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
 	SECRET         string
+	POLKA_KEY      string
 }
 
 // adding middleware to /app
@@ -724,6 +725,19 @@ func (cfg *apiConfig) editUser(w http.ResponseWriter, r *http.Request) {
 
 // polka webhook to upgrade user to chirpy red
 func (cfg *apiConfig) payment(w http.ResponseWriter, r *http.Request) {
+	key, _ := auth.GetAPIKey(r.Header)
+	if key != cfg.POLKA_KEY {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(401)
+		response := map[string]string{"error": "invalid api key"}
+		data, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("something wrong with json encoding")
+			return
+		}
+		w.Write(data)
+		return
+	}
 	type DataPayload struct {
 		UserID string `json:"user_id"`
 	}
@@ -760,7 +774,7 @@ func (cfg *apiConfig) payment(w http.ResponseWriter, r *http.Request) {
 		w.Write(data)
 		return
 	}
-	uuidObj, err := uuid.Parse(params.Data.UserID)
+	uuidObj, _ := uuid.Parse(params.Data.UserID)
 	_, err = cfg.DB.UpgradeToChirpyRed(r.Context(), uuidObj)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -776,7 +790,6 @@ func (cfg *apiConfig) payment(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(204)
-	return
 }
 
 func main() {
@@ -787,6 +800,7 @@ func main() {
 	}
 	dbURL := os.Getenv("DB_URL")
 	SECRET := os.Getenv("SECRET")
+	POLKA_KEY := os.Getenv("POLKA_KEY")
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
 	}
@@ -800,6 +814,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		DB:             dbQueries,
 		SECRET:         SECRET,
+		POLKA_KEY:      POLKA_KEY,
 	}
 
 	//handler (maps routes to fucntions)
