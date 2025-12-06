@@ -166,12 +166,42 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 // returns all chirps ordered in ascending order of creation time
 // GET @ /api/chirps
 func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
+	author := r.URL.Query().Get("author_id")
 	type Chirp struct {
 		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Body      string    `json:"body"`
 		UserID    uuid.UUID `json:"user_id"`
+	}
+	if author != "" {
+		authorID, _ := uuid.Parse(author)
+		data, err := cfg.DB.GetChirpsByAuthor(r.Context(), authorID)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("Database error fetching chirps: %v", err)
+			return
+		}
+		chirps := []Chirp{}
+		for _, dbChirp := range data {
+			chirps = append(chirps, Chirp{
+				ID:        dbChirp.ID,
+				CreatedAt: dbChirp.CreatedAt,
+				UpdatedAt: dbChirp.UpdatedAt,
+				Body:      dbChirp.Body,
+				UserID:    dbChirp.UserID,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		res, err := json.Marshal(chirps)
+		if err != nil {
+			log.Printf("JSON marshaling error: %v", err)
+			return
+		}
+		w.Write(res)
+
 	}
 	data, err := cfg.DB.GetAllChirps(r.Context())
 	if err != nil {
@@ -307,7 +337,7 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
-	tokenUser, err := cfg.DB.FindToken(r.Context(), tokenString)
+	tokenUser, _ := cfg.DB.FindToken(r.Context(), tokenString)
 	if chirpUserID == tokenUser.UserID {
 		cfg.DB.DeleteChirp(r.Context(), id)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
