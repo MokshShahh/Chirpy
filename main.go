@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -167,6 +168,8 @@ func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 // GET @ /api/chirps
 func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 	author := r.URL.Query().Get("author_id")
+	sorting := r.URL.Query().Get("sort")
+
 	type Chirp struct {
 		ID        uuid.UUID `json:"id"`
 		CreatedAt time.Time `json:"created_at"`
@@ -190,6 +193,11 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 				UpdatedAt: dbChirp.UpdatedAt,
 				Body:      dbChirp.Body,
 				UserID:    dbChirp.UserID,
+			})
+		}
+		if sorting == "desc" {
+			sort.Slice(chirps, func(i, j int) bool {
+				return !chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
 			})
 		}
 
@@ -219,7 +227,11 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 			UserID:    dbChirp.UserID,
 		})
 	}
-
+	if sorting == "desc" {
+		sort.Slice(chirps, func(i, j int) bool {
+			return !chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+		})
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	res, err := json.Marshal(chirps)
