@@ -644,6 +644,7 @@ func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// revokes a JWT
 func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -672,6 +673,7 @@ func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+// uses JWT to verify user then edits details
 func (cfg *apiConfig) editUser(w http.ResponseWriter, r *http.Request) {
 	type User struct {
 		Email string `json:"email"`
