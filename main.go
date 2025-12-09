@@ -243,6 +243,10 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// gets chirp lol
+// accepts search parameters like id(will return chirps of author with that id)
+// sort(will sort it in asc or dsc)
+// ascending by default
 func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 	type Chirp struct {
 		ID        uuid.UUID `json:"id"`
@@ -456,6 +460,10 @@ func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// main login function
+// logs user in after checking hashed password
+// generates JWT
+// stores in necessary places in the db
 func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 	type param struct {
 		Email    string `json:"email"`
@@ -565,6 +573,7 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// creates a new refresh token after all standard checks of the current token
 func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 	type Response struct {
 		Token string `json:"token"`
