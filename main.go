@@ -20,6 +20,7 @@ import (
 )
 
 // to store info that needs to be used once server starts
+// will get reset once the server is stoppped
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	DB             *database.Queries
@@ -37,7 +38,7 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 // returns total hits on /app
-// accessible at /api/metrics
+// GET @ /api/metrics
 func (cfg *apiConfig) metrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -51,7 +52,7 @@ func (cfg *apiConfig) metrics(w http.ResponseWriter, r *http.Request) {
 }
 
 // resets fileserverhits
-// accessible at /api/reset (post)
+// POST @ /api.reset
 func (cfg *apiConfig) reset(w http.ResponseWriter, r *http.Request) {
 	err := godotenv.Load()
 	if err != nil {
@@ -80,7 +81,7 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 
 // add chirp to db
 // has to be less than 140 chars long
-// accessible at /api/chirps (post)
+// POST @ /api/chirps
 func (cfg *apiConfig) addChirp(w http.ResponseWriter, r *http.Request) {
 	type param struct {
 		Body   string    `json:"body"`
@@ -247,6 +248,7 @@ func (cfg *apiConfig) getChirps(w http.ResponseWriter, r *http.Request) {
 // accepts search parameters like id(will return chirps of author with that id)
 // sort(will sort it in asc or dsc)
 // ascending by default
+// GET @ /api/chirp/{ID}
 func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 	type Chirp struct {
 		ID        uuid.UUID `json:"id"`
@@ -307,6 +309,7 @@ func (cfg *apiConfig) getChirp(w http.ResponseWriter, r *http.Request) {
 
 // checks if the authenticated user is tryna delete HIS OWN CHIRP
 // only then deletes
+// DELETE @ api/chirps/{ID}
 // #TODO: add better error handling
 func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 	idString := r.PathValue("id")
@@ -384,7 +387,7 @@ func (cfg *apiConfig) deleteChirp(w http.ResponseWriter, r *http.Request) {
 // adds a user using the CreateUser() from sqlc
 // accepts email in body of post request
 // needs to access DB therefore is a methode of apiconfig
-// accessible at /api/users
+// POST @ /api/users
 func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 	//easier to return the user that the db returns
 	type User struct {
@@ -464,6 +467,7 @@ func (cfg *apiConfig) addUser(w http.ResponseWriter, r *http.Request) {
 // logs user in after checking hashed password
 // generates JWT
 // stores in necessary places in the db
+// POST @ /api/login
 func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 	type param struct {
 		Email    string `json:"email"`
@@ -574,6 +578,7 @@ func (cfg *apiConfig) login(w http.ResponseWriter, r *http.Request) {
 }
 
 // creates a new refresh token after all standard checks of the current token
+// POST @/api/refresh
 func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 	type Response struct {
 		Token string `json:"token"`
@@ -654,6 +659,7 @@ func (cfg *apiConfig) refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 // revokes a JWT
+// POST @ /api/revoke
 func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
@@ -683,6 +689,7 @@ func (cfg *apiConfig) revoke(w http.ResponseWriter, r *http.Request) {
 }
 
 // uses JWT to verify user then edits details
+// PUT @ /api/users
 func (cfg *apiConfig) editUser(w http.ResponseWriter, r *http.Request) {
 	type User struct {
 		Email string `json:"email"`
@@ -777,6 +784,7 @@ func (cfg *apiConfig) editUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // polka webhook to upgrade user to chirpy red
+// POST @ /api/pola/webhook
 func (cfg *apiConfig) payment(w http.ResponseWriter, r *http.Request) {
 	key, _ := auth.GetAPIKey(r.Header)
 	if key != cfg.POLKA_KEY {
